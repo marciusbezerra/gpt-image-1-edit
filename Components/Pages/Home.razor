@@ -1,0 +1,144 @@
+﻿@page "/"
+@using DotNetEnv
+@using OpenAI.Images
+@rendermode InteractiveServer
+
+<PageTitle>OpenAI - GPT-Image-1 (Image/Edit) (CodeTotal)</PageTitle>
+
+<h2>OpenAI - GPT-Image-1 (Image/Edit)</h2>
+
+<hr>
+
+<div class="mb-3">
+    <label class="form-label">Upload da imagem original</label>
+    <InputFile class="form-control" OnChange="OnInputFileChange"></InputFile>
+</div>
+
+<div class="mb-3">
+    <label class="form-label">Prompt</label>
+    <input @bind="prompt" type="text" class="form-control" placeholder="Sugestão para a imagem" />
+</div>
+
+<div class="row">
+    <div class="col-6 mb-3">
+        <label class="form-label">Imagem Original</label>
+        @if (sourceImageUrl != null)
+        {
+            <img src="@sourceImageUrl" alt="Imagem Original" class="img-fluid" />
+        }
+        else
+        {
+            <img src="https://placehold.co/600x400?text=Original" alt="Imagem Original" class="img-fluid" />
+        }
+    </div>
+    <div class="col-6 mb-3">
+        <label class="form-label">Imagem Modificada</label>
+        @if (generatedImageBase64 != null)
+        {
+            <img src="@generatedImageBase64" alt="Imagem Modificada" class="img-fluid" />
+        }
+        else
+        {
+            @if (isProcessing)
+            {
+                <h2>Processando...</h2>
+            }
+            <img src="https://placehold.co/600x400?text=Modificada" alt="Imagem Original" class="img-fluid" />
+        }
+    </div>
+</div>
+
+@if (isProcessing)
+{
+    <div class="spinner-border" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+}
+else
+{
+    <div class="mb-3">
+        <button class="btn btn-primary" @onclick="GenerateImageAsync">Processar imagem</button>
+        <button class="btn btn-secondary" @onclick="ClearImage">Limpar</button>
+    </div>
+}
+
+@if (errorMessage != null)
+{
+    <div class="alert alert-danger" role="alert">
+        @errorMessage
+    </div>
+}
+
+@code {
+
+    private string? prompt;
+    private string? sourceImageBase64;
+    private string? sourceImageUrl;
+    private string? sourceImageFileName;
+    private string? generatedImageBase64;
+    private string? errorMessage;
+    private bool isProcessing = false;
+
+    protected override void OnInitialized()
+    {
+        Env.Load();
+    }
+
+    private async Task OnInputFileChange(InputFileChangeEventArgs e)
+    {
+        var maxSize = 1024 * 1024 * 5; // 5 MB
+
+        var browserFile = await e.File.RequestImageFileAsync(e.File.ContentType, 600, 400);
+        if (browserFile == null) return;
+
+        var ms = new MemoryStream();
+        await browserFile.OpenReadStream(maxSize).CopyToAsync(ms);
+
+        sourceImageBase64 = Convert.ToBase64String(ms.ToArray());
+        sourceImageFileName = browserFile.Name;
+        sourceImageUrl = $"data:{browserFile.ContentType};base64,{sourceImageBase64}";
+    }
+
+    private async Task GenerateImageAsync()
+    {
+        errorMessage = null;
+        isProcessing = true;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(sourceImageBase64) || string.IsNullOrWhiteSpace(prompt)) return;
+
+            var apiKey = Env.GetString("OPENAI_APIKEY");
+            var client = new ImageClient("gpt-image-1", apiKey);
+
+            var inputImageStream = new MemoryStream(Convert.FromBase64String(sourceImageBase64));
+
+            var options = new ImageEditOptions
+            {
+                // Size = GeneratedImageSize.W1024xH1024,
+                // ResponseFormat = GeneratedImageFormat.Bytes,
+            };
+
+            GeneratedImage generatedImage = await client.GenerateImageEditAsync(inputImageStream, sourceImageFileName, prompt,
+            options);
+            generatedImageBase64 = Convert.ToBase64String(generatedImage.ImageBytes.ToArray());
+            generatedImageBase64 = $"data:image/png;base64,{generatedImageBase64}";
+            prompt = "";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private void ClearImage()
+    {
+        sourceImageBase64 = null;
+        sourceImageUrl = null;
+        generatedImageBase64 = null;
+        prompt = "";
+    }
+}
