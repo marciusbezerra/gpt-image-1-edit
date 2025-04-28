@@ -1,4 +1,4 @@
-# GPT-IMAGE-1-BLAZOR
+# GPT-IMAGE-1-EDIT
 
 Blazor application for testing OpenAI's Image API (Image/Edit) using the `gpt-image-1` model.
 
